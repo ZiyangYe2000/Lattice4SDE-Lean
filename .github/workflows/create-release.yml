@@ -1,0 +1,24 @@
+name: Create Release
+
+on:
+  push:
+    branches:
+      - 'main'
+      - 'master'
+    paths:
+      - 'lean-toolchain'
+
+jobs:
+  lean-release-tag:
+    name: Add Lean release tag
+    # Enable release automation explicitly when a release is desired.
+    if: ${{ false }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+    - name: lean-release-tag action
+      uses: leanprover-community/lean-release-tag@v1
+      with:
+        do-release: true
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

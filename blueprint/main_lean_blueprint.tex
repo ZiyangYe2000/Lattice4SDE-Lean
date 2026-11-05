@@ -1,0 +1,831 @@
+\documentclass[11pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=24mm]{geometry}
+\usepackage{amsmath,amssymb,mathtools,bm}
+\usepackage{booktabs,longtable,array,seqsplit}
+\usepackage{xcolor,hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue!50!black,citecolor=green!35!black,
+ urlcolor=blue!50!black,pdftitle={TimeDependentLattice: Lean blueprint for the paper}}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{0.4em}
+\setlength{\emergencystretch}{3em}
+\renewcommand{\arraystretch}{1.18}
+\newcolumntype{L}[1]{>{\raggedright\arraybackslash}p{#1}}
+\newcommand{\R}{\mathbb R}
+\newcommand{\E}{\mathbb E}
+\newcommand{\norm}[1]{\left\lVert#1\right\rVert}
+\newcommand{\lean}[1]{\texttt{\expandafter\seqsplit\expandafter{\detokenize{#1}}}}
+\newcommand{\HS}{\mathrm{HS}}
+\newcommand{\dd}{\,\mathrm d}
+\title{\textbf{Lean Formalization Blueprint}\\
+ \large Time-dependent lattice rules for SDEs with constant diffusion}
+\author{Du Ouyang \and Josef Dick \and Ziyang Ye}
+\date{23 October 2026}
+\begin{document}
+\maketitle
+This blueprint accompanies the paper and describes the
+current Lean formalization. All theorem, lemma, definition and equation
+numbers below are the numbers printed in that paper's PDF.
+File paths are relative to \texttt{TimeDependentLattice/}; a file name
+locates a declaration and is not an additional namespace component.
+
+\section{Results and input overview}
+\label{sec:overview}
+The formalization has two branches. The derivative-tree expansion,
+summability and Gaussian norm estimates lead to the sampling results.
+The SDE and moment inputs lead to Euler strong-error and bias bounds.
+The total-error theorems combine the two branches.
+
+\subsection{Main results}
+{\small
+\begin{longtable}{@{}L{0.23\linewidth}L{0.73\linewidth}@{}}
+\toprule Paper result & Final Lean entry\\ \midrule\endhead
+Theorem 4.1; (4.2) &
+\lean{Sampling/DimensionUniform.lean}:\newline
+\lean{theorem4_1_with_paper_constant},
+\lean{theorem4_1_exists_pos_uniform}.\\
+Theorem 3.1; (3.1)--(3.2) &
+\lean{Sampling/PaperTheorems.lean}:\newline
+\lean{EulerSamplingInputs.single_real},
+\lean{EulerSamplingInputs.median_real}.\\
+Corollary 3.4 &
+\lean{Sampling/PaperUniformTheorems.lean}:\newline
+\lean{EulerSamplingInputs.single_uniform_real},
+\lean{EulerSamplingInputs.median_uniform_real}.\\
+Theorems 3.7 and 3.8 &
+\lean{Bias/EulerTheorems.lean}:\newline
+\lean{theorem3_7_coupled_strong}, \lean{theorem3_7_coupled_bias},
+\lean{theorem3_8_coupled_strong}, \lean{theorem3_8_coupled_bias}.
+The dimension-uniform conclusions are in \lean{Bias/UniformTheorems.lean}.\\
+Corollary 3.9; (3.9)--(3.10) &
+\lean{Bias/PaperTotalError.lean},
+\lean{Bias/PaperMedianTotalError.lean}:\newline
+\lean{corollary3_9_single_paper}, \lean{corollary3_9_median_paper},
+and their \lean{_half}/\lean{_one} specializations.
+The uniform versions are in \lean{Bias/PaperUniformTotalError.lean}.\\
+\bottomrule
+\end{longtable}}
+The final sampling and total-error statements include \lean{MemLp}
+membership and bounds for the real-valued \lean{lpNorm}.
+Key intermediate lemmas can be located directly in Section~\ref{sec:navigation}.
+
+Section~\ref{sec:inputs} separates the model assumptions, the supplied
+objects and mathematical results, and the measurability and integrability
+conditions. Each supplied result is stated in
+Section~\ref{sec:math-inputs}, together with its use in the paper,
+Lean interface and the conclusions that use it.
+
+\section{Model conditions and accepted inputs}
+\label{sec:inputs}
+\subsection{Objects and model assumptions}
+\label{sec:model}
+Throughout, we use the paper's convention $T>0$.
+\lean{State stateDim} is $\R^{d_x}$ with its Euclidean norm.
+A \lean{Diffusion stateDim noiseDim} represents
+$\Sigma:\R^{d_w}\to\R^{d_x}$. For the standard basis $(e_r)$, set
+\[
+ \Theta_p=\sum_{r=1}^{d_w}|\Sigma e_r|_2^p,\qquad
+ \sigma=\|\Sigma\|_{\HS},\qquad L=\mathsf B_1=B_0B_1,
+ \qquad \mathsf B_2=B_0B_1^2(2!)^\tau.
+\]
+\lean{FiniteDimension.lean} and \lean{Bias/DiffusionBounds.lean}
+identify these quantities and prove (2.9), including
+\[
+ \Theta_p\le\Theta_{2/3}^{3p/2}\quad(p\ge2/3),\qquad
+ \sigma\le M_{2/3}^{3/2}\quad\hbox{if }\Theta_{2/3}\le M_{2/3}.
+\]
+For $m=2^J$, the structured type \lean{Index J noiseDim} has cardinality
+$s=md_w$. The coefficient representation (2.14)--(2.17) defines the
+bridge path and the Euler recursion (2.20):
+\[
+ X^h_{t_{i+1}}(z)=X^h_{t_i}(z)+h\,b(t_i,X^h_{t_i}(z))
+       +\Sigma\bigl(W_{t_{i+1}}(z)-W_{t_i}(z)\bigr),
+ \quad h=T/m,
+\]
+with $t_i=ih$, $t_m=T$, and $F_m(z)=g(X_T^h(z))$ as in (2.21).
+Throughout, Gaussian integration is written as
+$\phi_s(z)\,\dd z$, where $\phi_s(z)=\prod_{j=1}^s\phi(z_j)$.
+The symbols $\gamma_u$ denote the function-space subset weights.
+
+The spatial part of Assumption 2.1 is recorded in \lean{GevreyBounds}:
+$B_0,B_1,G_0,G_1,\beta_g>0$, $1\le\tau<3/2$, spatial smoothness, and
+\[
+\begin{aligned}
+ \|D_x^n b(t,x)\|_{\rm op}&\le B_0B_1^n(n!)^\tau,
+       &&n\ge1,\quad 0\le t\le T,\\
+ \|D^n g(x)\|_{\rm op}&\le G_0G_1^n(n!)^\tau e^{\beta_g|x|_2},
+       &&n\ge1.
+\end{aligned}
+\]
+The origin bound $|b(t,0)|_2\le K_0$ from (2.3) is supplied separately.
+The proved \lean{drift_norm_le_origin_add_lipschitz} gives
+$|b(t,x)|_2\le K_0+L|x|_2$.
+The paper's drift on $[0,T]$ is represented by a function of real time,
+with a spatially smooth extension outside $[0,T]$, for example zero.
+The field \lean{drift_smooth} refers to this representative;
+the main estimates use only times in $[0,T]$.
+
+The remaining model conditions depend on the conclusion being used:
+\begin{itemize}
+\item Corollary 3.4 and dimension-uniform bias bounds use Assumptions
+2.2--2.3: common model constants, $|x_0|_2\le R_0$ and
+$\Theta_{2/3}\le M_{2/3}$.
+\item Theorem 3.7 uses the temporal condition (3.4),
+$|b(s,x)-b(t,x)|_2\le H_t(1+|x|_2)|s-t|^{1/2}$.
+Theorem 3.8 uses (3.7),
+$|b(s,x)-b(t,x)|_2\le L_t(1+|x|_2)|s-t|$.
+Both conditions are imposed only on $s,t\in[0,T]$.
+\item The general total-error result uses Assumption 3.6, equation (3.3):
+$|I_m-I|\le C_{\rm bias}m^{-\theta}$ with $\theta>0$.
+The half-order and first-order specializations obtain this bound from
+Theorems 3.7 and 3.8.
+\end{itemize}
+The sampling range is prime $N\ge2$, $0<\varepsilon<1/2$;
+for the median it is $R=2k-1$, $k\ge1$ and
+$1\le q<k/(1-\varepsilon)$. All stochastic inputs below use a
+probability space $(\Omega,\mathcal F,\mathbb P)$.
+
+\subsection{Supplied objects and mathematical results}
+\label{sec:math-inputs}
+Each entry states what is supplied. The \emph{paper location} identifies
+where the object or result is used in the paper; the \emph{used to prove}
+line names the conclusions obtained from it in Lean.
+
+\paragraph{Sampling objects.}
+The sampling interface takes a measurable function
+\lean{normalQuantile}$:\R\to\R$ for the standard-normal quantile
+transformation, and a measurable nonnegative extended-real function
+$a\mapsto e(a)$ for the shift-averaged worst-case error.
+Their quantile and Sobolev-space interpretations enter through these
+objects and the two error bounds below.
+
+\textit{Paper location:} The quantile transformation in (2.24) and the
+worst-case error in (2.27).
+
+\textit{Lean interface:} \lean{normalQuantile}, \lean{quantile_measurable},
+\lean{wce} and \lean{wce_measurable} in \lean{EulerSamplingInputs}.
+
+\textit{Used to prove:} Measurability of the lattice estimators and the
+sampling and total-error bounds.
+
+\paragraph{Shift-averaged squared-error bound.}
+For $B_u$ as in (5.1), the project chooses the auxiliary weights (5.6),
+\[
+ \gamma_u=\left(\frac{B_u^2}{\rho_\lambda^{|u|}}\right)^{1/(1+\lambda)},
+ \qquad u\ne\varnothing,
+\]
+with the paper's zero-weight convention. The accepted standard bound is
+\[
+ \E_\Delta|Q_{a,\Delta}(F_m)-I_m|^2
+ \le\left(\sum_{u\ne\varnothing}\frac{B_u^2}{\gamma_u}\right)e(a)^2,
+\]
+for each fixed generating vector $a$.
+
+\textit{Paper location:} In the proof of Proposition 5.3, using
+(2.26)--(2.27).
+
+\textit{Lean interface:} \lean{EulerSamplingInputs.shift_bound}.
+
+\textit{Used to prove:} Proposition 5.3, then Theorem 3.1 and
+Corollaries 3.4 and 3.9.
+
+\paragraph{Moment bound for the worst-case error.}
+For a uniformly chosen generating vector $A$, the cited bound is
+\[
+ \E_A e(A)^{2\lambda}\le
+ \frac1{N-1}\sum_{u\ne\varnothing}\gamma_u^\lambda\rho_\lambda^{|u|}.
+\]
+The source results are \cite[Theorem~1, Eq.~(13)]{ye2026median} and
+\cite[Example~5]{kuo2010}; the constants in (2.28) are fixed in
+Section~\ref{sec:sampling-constants}.
+
+\textit{Paper location:} Lemma 2.5, (2.29), used in the proof of
+Proposition 5.3.
+
+\textit{Lean interface:} \lean{EulerSamplingInputs.random_wce_bound}.
+
+\textit{Used to prove:} Proposition 5.3, then Theorem 3.1 and
+Corollaries 3.4 and 3.9. Proposition 5.3 is proved from the two error
+bounds by conditional Jensen's inequality and optimization of the subset
+weights, including the zero-weight cases in
+\lean{Sampling/Optimization.lean}.
+
+\paragraph{SDE integral equation.}
+Let $X$ be the exact process and $\widetilde X_{t_i}$ the coupled Euler
+chain driven by the same noise $\Sigma W$. The accepted identities are
+\[
+ X_0=x_0,\qquad
+ X_{t_{i+1}}=X_{t_i}+\int_{t_i}^{t_{i+1}}b(s,X_s)\,\dd s
+                  +\Sigma(W_{t_{i+1}}-W_{t_i}),\quad i<m,
+\]
+almost surely. Existence and uniqueness are cited in the paper from
+\cite[Theorem~7.1]{pages2018numerical}.
+
+\textit{Paper location:} Equation (1.1), used in Lemma E.2 and in the
+error recurrences in the proofs of Theorems 3.7 and 3.8, including (E.10).
+
+\textit{Lean interface:} \lean{CoupledMomentInputs.solution_initial}
+and \lean{CoupledMomentInputs.solution_step}.
+
+\textit{Used to prove:} Theorems 3.7 and 3.8.
+
+\paragraph{State moments from Lemma E.2.}
+Lemma E.2 is accepted from the paper, with its explicit constants
+(E.2) and (E.4). The consequences used in Lean are
+\[
+ \forall s\in[0,T],\quad \|X_s\|_{L^2}\le C_X(|x_0|_2,\sigma),
+\]
+\[
+ \E e^{2\beta_g|X_T|_2}
+ +\E e^{2\beta_g|\widetilde X_T|_2}
+ \le C_{\exp}(2\beta_g,\sigma)e^{2\beta_g e^{LT}|x_0|_2}.
+\]
+The explicit formulas for $C_X,C_{\exp}$ appear in
+Section~\ref{sec:euler-constants}.
+Lemma E.1 is not separately formalized: the paper uses it inside the
+proof of E.2's exponential estimate.
+
+\textit{Paper location:} Lemma E.2, (E.3) and (E.5), applied in the
+proofs of Theorems 3.7 and 3.8 and in the payoff estimate (E.7).
+
+\textit{Lean interface:} \lean{CoupledMomentInputs.exact_moment}
+and \lean{CoupledMomentInputs.joint_exponential}.
+
+\textit{Used to prove:} Theorems 3.7 and 3.8, with the paper's
+$C_{\rm pay}$ and bias constants.
+
+\paragraph{Increment and remainder integral identities.}
+For $t_i\le s\le t_{i+1}$, write
+$\delta_i(s)=b(s,X_s)-b(t_i,X_{t_i})$ and
+$R_i=\int_{t_i}^{t_{i+1}}\delta_i(s)\,\dd s$.
+The accepted $L^2$ identities are
+\[
+\begin{split}
+ X_s-X_{t_i}&=\int_{t_i}^{s}b(r,X_r)\,\dd r+\Sigma(W_s-W_{t_i}),\\
+ R_i&=\int_{t_i}^{t_{i+1}}\delta_i(s)\,\dd s.
+\end{split}
+\]
+
+\textit{Paper location:} In the proof of Theorem 3.7, the increment
+estimate following (E.8) and the local remainder estimate before (E.9).
+
+\textit{Lean interface:} \lean{HalfOrderStochasticInputs.increment_eq}
+and \lean{HalfOrderStochasticInputs.remainder_eq}.
+
+\textit{Used to prove:} The increment and local remainder bounds,
+and Theorem 3.7.
+
+\paragraph{Brownian increment second-moment identity.}
+The standard identity, for $t_i\le s\le t_{i+1}$, is
+\[
+ \E|\Sigma(W_s-W_{t_i})|_2^2=\sigma^2(s-t_i).
+\]
+
+\textit{Paper location:} In the proof of Theorem 3.7, the increment
+estimate following (E.8).
+
+\textit{Lean interface:} \lean{HalfOrderStochasticInputs.noise_isometry}.
+
+\textit{Used to prove:} Theorem 3.7.
+
+\paragraph{First-order It\^o/Fubini identities.}
+For $s\in[t_i,t_{i+1}]$, set
+\[
+\begin{split}
+ V_i(s)&=b(s,X_s)-b(t_i,X_s),\\
+ G_i(s)&=D_xb(t_i,X_s)b(s,X_s)
+  +\frac12\sum_{r=1}^{d_w}
+          D_x^2b(t_i,X_s)[\Sigma e_r,\Sigma e_r].
+\end{split}
+\]
+The supplied decomposition is
+\[
+ A_i=\int_{t_i}^{t_{i+1}}V_i(s)\,\dd s
+      +\int_{t_i}^{t_{i+1}}(t_{i+1}-s)G_i(s)\,\dd s,
+ \qquad \sum_{i<j}R_i=\sum_{i<j}A_i+S_j.
+\]
+
+\textit{Paper location:} In the proof of Theorem 3.8, the unnumbered
+decomposition between (E.10) and (E.11).
+
+\textit{Lean interface:} \lean{OneOrderStochasticInputs.temporal_rep},
+\lean{generator_rep}, \lean{A_integral_eq} and \lean{remainder_split},
+which identify the random objects and their integrals.
+
+\textit{Used to prove:} Theorem 3.8, through the internally proved
+local remainder estimate (E.14).
+
+\paragraph{Martingale property and isometry.}
+The process $S_j$ is a square-integrable martingale for the supplied
+filtration. Its accepted isometry/orthogonality identity is
+\[
+ \E|S_j|_2^2=\sum_{i<j}\int_{t_i}^{t_{i+1}}(t_{i+1}-s)^2
+        \E\|D_xb(t_i,X_s)\Sigma\|_{\HS}^2\,\dd s.
+\]
+
+\textit{Paper location:} In the proof of Theorem 3.8, the variance
+calculation immediately before (E.15).
+
+\textit{Lean interface:} \lean{OneOrderStochasticInputs.martingale_property}
+and \lean{OneOrderStochasticInputs.martingale_isometry}.
+
+\textit{Used to prove:} The terminal variance bound and Theorem 3.8.
+
+\paragraph{Finite-grid Doob inequality.}
+For a square-integrable martingale $S$, the accepted standard inequality is
+\[
+ \left\|\max_{\ell\le j}|S_\ell|_2\right\|_{L^2}
+       \le2\|S_j\|_{L^2}.
+\]
+
+\textit{Paper location:} In the proof of Theorem 3.8, the Doob step
+yielding (E.15).
+
+\textit{Lean interface:} \lean{FiniteDoobL2}, supplied through
+\lean{OneOrderStochasticInputs.doob_l2}.
+
+\textit{Used to prove:} The numerical maximal bound (E.15),
+and Theorem 3.8.
+
+\paragraph{Gaussian representation of the Euler terminal state.}
+The paper's map is $z\mapsto X_T^h(z)=\widetilde X_{t_m}(\mathcal B_mz)$
+with $t_m=T$, as in (2.19). The accepted terminal law states,
+for every Borel set $A\subseteq\R^{d_x}$,
+\[
+ \mathbb P\{\omega:\widetilde X_T(\omega)\in A\}
+ =\int_{\R^s}\mathbf1_A\bigl(X_T^h(z)\bigr)\phi_s(z)\,\dd z.
+\]
+
+\textit{Paper location:} The representation (2.19)--(2.22), connecting
+the coupled Euler expectation to $I_m$ in Corollary 3.9.
+
+\textit{Lean interface:} \lean{hlaw : IdentDistrib} in the half-order
+and first-order entries of \lean{Bias/PaperTotalError.lean} and
+\lean{Bias/PaperMedianTotalError.lean}.
+
+\textit{Used to prove:} The half-order and first-order specializations
+of Corollary 3.9.
+
+\lean{Bias/GaussianExpectation.lean} proves the consequence
+\[
+ I_m=\int_{\R^s}F_m(z)\phi_s(z)\,\dd z=\E g(\widetilde X_T)
+\]
+and transports payoff integrability from the coupled Euler variable.
+
+\subsection{Measurability, integrability and representatives}
+\label{sec:technical}
+Random variables are represented by measurable functions or by elements
+of \lean{Lp}; the supplied representatives equal the displayed random
+objects almost surely. The common moment input includes
+\[
+ X_s\in L^2\ (0\le s\le T),\qquad
+ \widetilde X_{t_i}\in L^2\ (i\le m),\qquad
+ e^{2\beta_g|X_T|_2},\ e^{2\beta_g|\widetilde X_T|_2}\in L^1.
+\]
+These are \lean{exact_memLp}, \lean{euler_memLp},
+\lean{exact_exponential} and \lean{euler_exponential}.
+The half-order input also supplies $L^2$ representatives of the drift,
+noise increments, state increments, $\delta_i$ and $R_i$; the first-order input
+supplies those of $V_i,G_i,A_i,S_j$.
+
+Pathwise drift integrability is
+\[
+ \int_{t_i}^{t_{i+1}}|b(s,X_s(\omega))|_2\,\dd s<\infty
+ \quad\hbox{for almost every }\omega,
+\]
+recorded by \lean{solution_integrable}.
+The Bochner integrability fields are
+\[
+ \delta_i\in L^1([t_i,t_{i+1}];L^2(\Omega;\R^{d_x}))
+ \quad\hbox{(half order)},
+\]
+\[
+ V_i,\quad s\mapsto(t_{i+1}-s)G_i(s)
+   \in L^1([t_i,t_{i+1}];L^2(\Omega;\R^{d_x}))
+ \quad\hbox{(first order)}.
+\]
+They are \lean{delta_integrable}, \lean{temporal_integrable} and
+\lean{generator_integrable}. In particular, first-order integrability
+means strong measurability and
+\[
+ \int_{t_i}^{t_{i+1}}\|V_i(s)\|_{L^2}\,\dd s<\infty,
+ \qquad
+ \int_{t_i}^{t_{i+1}}(t_{i+1}-s)\|G_i(s)\|_{L^2}\,\dd s<\infty.
+\]
+The scalar variance integrand is also integrable:
+\[
+ s\mapsto(t_{i+1}-s)^2\E\|D_xb(t_i,X_s)\Sigma\|_{\HS}^2
+       \in L^1([t_i,t_{i+1}]),
+\]
+through \lean{stochastic_integrand_integrable}.
+These conditions support the integral identities in the proofs of
+Theorems 3.7 and 3.8, especially the It\^o/Fubini step before (E.11)
+and the variance calculation before (E.15).
+The mathematical identities themselves are listed in
+Section~\ref{sec:math-inputs}.
+
+\section{Proof guide and paper-to-Lean navigation}
+\label{sec:navigation}
+The tables locate proofs of paper statements and the main intermediate
+steps. A full statement is named directly; a proof step is followed by
+its paper location in parentheses. The supplied inputs are listed in
+Section~\ref{sec:math-inputs}.
+
+\subsection{Tree expansion and derivative summability}
+The mixed derivative uses Mathlib's iterated Fr\'echet derivative on
+coordinate directions. Ordered finite partitions are identified with
+unordered set partitions; $C^\infty$ smoothness proves invariance under
+permutations. The canonical child order therefore has the same value
+as the paper's unordered children.
+The higher-order chain rule follows the partition formula of
+\cite[Theorem~1]{levy2006why}.
+The construction of inverse maps between expansion choices and timed
+trees gives (B.6). Coefficient counts, time factors and subset sums then
+prove Theorem 4.1 for every $\kappa>0$ and $p>2/3$:
+\[
+ \sup_{m\in\mathcal M}\sum_{u\ne\varnothing}
+       \kappa^{|u|}\mathcal D_{m,u}^p
+ \le C_{\mathcal D}(\kappa,p;\Theta_{2/3}).
+\]
+{\small
+\begin{longtable}{@{}L{0.33\linewidth}L{0.63\linewidth}@{}}
+\toprule Paper result or proof step & Lean proof location\\ \midrule\endhead
+Coefficient upper bound and support (in proof of Lemma 2.4; (2.18)) &
+\lean{BrownianBridge/Coefficients.lean}:
+\lean{coefficient_detail_le}, \lean{coefficient_detail_eq_zero_of_not_mem_supportInterior}.
+\lean{BrownianBridge/Path.lean} supplies the linear path.\\
+Lemma 4.2, (4.6)--(4.8) &
+\lean{Euler/Propagator.lean}:
+\lean{compensatedStateCoordinateDerivative_eq_sum_propagator},
+\lean{compensatedStateDerivative_eq_sum_nonlinearForcing}.
+\lean{Trees/Value.lean}:
+\lean{nonlinearStateForcing_eq_sum_driftRootChoices} supplies the local
+forcing reindexing used in (4.7).
+\lean{Trees/AnalyticBound.lean}: \lean{norm_stepPropagator_le_exp}.\\
+Lemma B.1, (B.1) &
+\lean{Trees/DerivativeExpansion.lean}:
+\lean{paperFinpartitionChainTerm_payoff_eq_sum_directChoices},
+\lean{sum_payoff_genericTerm_eq_sum_endpointChoices},
+\lean{endpointPartitionDirectEquivPayoffRootChoice}.\\
+Definitions B.2--B.4 &
+\lean{Trees/PayoffTree.lean}: \lean{LabelledPayoffTree};
+\lean{Trees/TimeAssignment.lean};
+\lean{Trees/Value.lean}: \lean{TimedPayoffTree.value}.\\
+Lemma B.5, (B.6) &
+\lean{Trees/DerivativeExpansion.lean}:
+\lean{mixedDerivative_integrand_eq_treeExpansionSum}.
+The inverse constructions are in \lean{Trees/Correspondence.lean}:
+\lean{PayoffExpansionChoice.equivTimedPayoffTree}.\\
+Lemma B.6, (B.14)--(B.15) &
+\lean{Trees/Counting.lean}: \lean{PayoffTreeData.expression_structure}.\\
+Lemma B.7, (B.16) &
+\lean{Trees/PlaneCounting.lean}: \lean{weighted_payoffTree_count}.
+The Catalan encoding yields $64^k k!$.\\
+Lemma B.8, (B.17)--(B.18) &
+\lean{Trees/AnalyticBound.lean}:
+\lean{TimedPayoffTree.normalized_norm_value_le_factorized},
+\lean{analyticCoefficient_sum_le}.\\
+Independent-time summation (in proof of Proposition 4.3; (B.20)) &
+\lean{Trees/TimeFactorBound.lean}:
+\lean{timeAssignment_direction_sum_le_eta_factors}.\\
+Proposition 4.3, (4.10) &
+\lean{Regularity/Envelope.lean}:
+\lean{normalizedDerivativeEnvelope_le_keyMajorantSum}.\\
+Lemma 4.4, (4.11)--(4.12) (proof in Appendix C) &
+\lean{Regularity/Eta.lean}: \lean{eta_detailIndices_laminar_bound};
+\lean{Regularity/DetailSummability.lean}:
+\lean{detail_powersetCard_eta_rpow_le}.\\
+Lemma 4.5, (4.13)--(4.14) (proof in Appendix C) &
+\lean{Regularity/PaperSummability.lean}:
+\lean{endpointWeightedSum_le_paperTimeFactorConstant},
+\lean{allSubsetTimeFactorSum_le_paperTimeFactorConstant}.\\
+$\rho$-summability defining $C_{\rm sum}$ (in proof of Theorem 4.1; (4.17)) &
+\lean{Regularity/MajorantSummation.lean}:
+\lean{derivativeEnvelopeRhoSum_le_derivativeRhoConstant}.\\
+Theorem 4.1 &
+\lean{Sampling/DimensionUniform.lean}:
+\lean{paperDerivativeConstant_eq_paper_formula},
+\lean{paperDerivativeConstant_mono},
+\lean{theorem4_1_exists_pos_uniform}.\\
+\bottomrule
+\end{longtable}}
+The $3/2$ laminar-support factor is retained. The constant is independent
+of $m$ and $x_0$; common model constants and a bound on $\Theta_{2/3}$
+give the dimension-uniform version.
+
+\subsection{Gaussian norm and sampling error}
+For $u\ne\varnothing$ and $f=\partial_uF_m$, the code uses the hybrid product law
+\[
+ \dd\mu_u=\prod_{j\in u}\alpha_0e^{-2\alpha_0|z_j|}\,\dd z_j
+             \prod_{j\notin u}\phi(z_j)\,\dd z_j.
+\]
+The proved conditional-expectation identification gives
+\[
+ B_u(F_m)=\alpha_0^{-|u|/2}
+       \|\E_{\mu_u}[\partial_uF_m\mid z_u]\|_{L^2(\mu_u)}.
+\]
+Conditioning integrates the inactive Gaussian coordinates. The factor
+$\alpha_0^{-|u|}$ in the square cancels the normalized active density,
+so this is exactly the iterated-density expression (5.1):
+\[
+ B_u(F_m)^2=\int_{\R^{|u|}}
+    \left|\int_{\R^{s-|u|}}\partial_uF_m(z_u,z_{-u})
+                         \phi_{-u}(z_{-u})\,\dd z_{-u}\right|^2
+             \prod_{j\in u}e^{-2\alpha_0|z_j|}\,\dd z_u.
+\]
+The hybrid $L^2$ integrability needed for this identification is proved
+for the actual Euler derivative. Conditional-expectation contraction
+then gives Lemma 5.2. Weight optimization and the two lattice inputs
+produce Proposition 5.3; tail integration for independent copies gives
+Lemma 5.4 and the median bound.
+{\small
+\begin{longtable}{@{}L{0.33\linewidth}L{0.63\linewidth}@{}}
+\toprule Paper result or proof step & Lean proof location\\ \midrule\endhead
+Gaussian component identification (used in proof of Lemma 5.2; (5.1)) &
+\lean{Sampling/GaussianSpacePaper.lean}:
+\lean{gaussianSpaceComponent_eq_paper},
+\lean{eulerGaussianSpaceComponent_eq_paper}.\\
+Lemma 5.1 (proof in Appendix D) &
+\lean{Sampling/HybridMomentAssembly.lean}:
+\lean{hybridEulerTerminalMoment_le_auxiliaryMomentConstant}.
+Both $\Theta_1=0$ and $\Theta_1>0$ are covered.\\
+Lemma 5.2, (5.3) &
+\lean{Sampling/GaussianSpaceNorm.lean}: \lean{lemma5_2};
+\lean{Sampling/EulerTransfer.lean}: \lean{eulerGaussianSpaceComponent_le}.\\
+Subset-weight optimization (in proof of Proposition 5.3; (5.6)) &
+\lean{Sampling/Optimization.lean}: \lean{auxiliarySubsetWeight}
+and the proved balance identities, including zero weights.\\
+Proposition 5.3, (5.4)--(5.5) &
+\lean{Sampling/Transfer.lean}: \lean{latticeMomentScale};
+\lean{Sampling/FractionalMoment.lean}: \lean{proposition5_3_prod}.\\
+Lemma 5.4, (5.7) &
+\lean{Sampling/MedianTail.lean}: \lean{median_lintegral_rpow_le_paper},
+\lean{median_eLpNorm_le_paper}.\\
+Uniform single-copy fractional moment (in proof of Theorem 3.1; (5.9)) &
+\lean{Sampling/EulerMain.lean}: \lean{euler_lattice_fractional_moment},
+combined with \lean{Sampling/PaperConstants.lean}:
+\lean{latticeUniformMomentConstant_le_eulerPaperLatticeMomentConstant}.\\
+Theorem 3.1; Corollary 3.4 &
+\lean{Sampling/PaperTheorems.lean} and
+\lean{Sampling/PaperUniformTheorems.lean}; final real-valued entries
+are listed in Section~\ref{sec:overview}.\\
+\bottomrule
+\end{longtable}}
+The estimator definitions implement (2.23)--(2.25).
+\lean{Sampling/LatticeProbability.lean} constructs the randomization
+measures. \lean{Sampling/EulerMedian.lean} proves independence of repeated errors.
+The median order condition proves uniqueness and measurability.
+
+\subsection{Euler strong error and payoff bias}
+The half-order branch uses the increment equation and (3.4) to bound
+$R_i$. The first-order branch estimates the actual Jacobian and Hessian
+terms in $A_i$ and the martingale term $S_j$. In particular, the code
+proves (E.11)--(E.12), then the terminal variance and (E.15):
+\[
+ \E|S_m|_2^2\le\frac{L^2\sigma^2T}{3}h^2,\qquad
+ \left\|\max_{j\le m}|S_j|_2\right\|_{L^2}
+            \le2L\sigma\sqrt{T/3}\,h.
+\]
+Telescoping the actual SDE/Euler difference and applying discrete
+Gronwall yields the strong estimates. The payoff derivative bound and
+Cauchy--Schwarz prove (E.7), with the exact $C_{\rm pay}$ of (E.6).
+{\small
+\begin{longtable}{@{}L{0.33\linewidth}L{0.63\linewidth}@{}}
+\toprule Paper result or proof step & Lean proof location\\ \midrule\endhead
+Payoff transfer (used in proofs of Theorems 3.7 and 3.8; (E.7)) &
+\lean{Bias/PayoffTransfer.lean}:
+\lean{payoff_sub_le_endpoint_exponentials},
+\lean{payoff_integral_sub_le_payoffDifferenceConstant}.\\
+State-increment estimate (in proof of Theorem 3.7; following (E.8)) &
+\lean{Bias/LocalEstimates.lean}: \lean{state_increment_lpNorm_of_integral_eq}.\\
+Half-order local remainder (in proof of Theorem 3.7; between (E.8) and (E.9)) &
+\lean{Bias/EulerTheorems.lean}: \lean{HalfOrderStochasticInputs.local_bound}.\\
+Vector error recurrence (in proof of Theorem 3.8; (E.10)) &
+\lean{Bias/EulerProcess.lean}: \lean{coupledEuler_error_step},
+\lean{coupledEuler_error_eq_sum_ae}.\\
+Trace and Hilbert--Schmidt estimates (in proof of Theorem 3.8; (E.11)--(E.12)) &
+\lean{Bias/DiffusionBounds.lean}: \lean{drift_trace_norm_le},
+\lean{drift_diffusion_hilbertSchmidt_sq_le}.\\
+Drift remainder estimate (in proof of Theorem 3.8; (E.14)) &
+\lean{Bias/EulerTheorems.lean}: \lean{OneOrderStochasticInputs.local_bound}.\\
+Terminal variance and martingale maximal bound (in proof of Theorem 3.8;
+display before (E.15) and (E.15)) &
+\lean{Bias/EulerTheorems.lean}:
+\lean{OneOrderStochasticInputs.martingale_second_moment},
+\lean{OneOrderStochasticInputs.martingale_maximal}.\\
+Gronwall and strong-error estimate (in proof of Theorem 3.8; (E.17)) &
+\lean{Bias/ErrorRecursion.lean}:
+\lean{gridMaxNorm_recurrence_of_local_bounds};
+\lean{Bias/EulerTheorems.lean}: \lean{theorem3_8_coupled_strong}.\\
+Theorems 3.7 and 3.8 &
+\lean{Bias/EulerTheorems.lean}: the strong and bias entries in
+Section~\ref{sec:overview}.\\
+Theorems 3.7(ii) and 3.8(ii) &
+\lean{Bias/UniformTheorems.lean}:
+\lean{theorem3_7_coupled_strong_uniform},
+\lean{theorem3_7_coupled_bias_uniform},
+\lean{theorem3_8_coupled_bias_uniform}.\\
+\bottomrule
+\end{longtable}}
+The resulting biases have orders $m^{-1/2}$ and $m^{-1}$.
+The core Euler results allow every integer $m>0$; the sampling and total
+error entries specialize to the paper's dyadic $m=2^J$.
+
+\subsection{Total error and dimension-uniform constants}
+Corollary 3.9 follows by the triangle inequality from the proved sampling
+bound and the bias premise (3.3):
+\[
+\begin{split}
+ \|Q_{A,\Delta}^{N,m}-I\|_{L^1}
+ &\le C_\varepsilon N^{-1+\varepsilon}+C_{\rm bias}m^{-\theta},\\
+ \|M_{R,N,m}-I\|_{L^q}
+ &\le C_{\varepsilon,q,R}N^{-1+\varepsilon}+C_{\rm bias}m^{-\theta}.
+\end{split}
+\]
+The \lean{_half}/\lean{_one} entries in
+\lean{Bias/PaperTotalError.lean} and
+\lean{Bias/PaperMedianTotalError.lean} obtain the bias from Theorems
+3.7/3.8 and use the terminal law in Section~\ref{sec:math-inputs} to
+identify its Euler expectation with $I_m$.
+\lean{Bias/PaperUniformTotalError.lean} uses Corollary 3.4 for the
+sampling part. For dimension-uniform total-error constants,
+$\theta$ and $C_{\rm bias}$ must also be chosen commonly across
+$d_x,d_w$, as required in the final statement of Corollary 3.9.
+The uniform Euler theorems supply these choices for $\theta=1/2$ and
+$\theta=1$, with a common $H_t$ or $L_t$ respectively.
+
+\section{Constants and parameter dependence}
+\label{sec:constants}
+This section collects the paper's selected constants. Their positivity,
+series convergence and stated monotonicities are proved in the modules
+listed below. We abbreviate $x=|x_0|_2$ and $\sigma=\|\Sigma\|_{\HS}$;
+all other model parameters are held fixed when monotonicity in $x$ or
+$\sigma$ is mentioned.
+
+\subsection{Tree and summability constants}
+In Appendix B, $K$ is chosen in the proof of Lemma B.8, and
+$C_{\rm maj}$ is chosen after (B.20):
+\[
+ K=\max\{1,G_0,G_1,e^{LT}B_0,B_1,2^\tau\},\qquad
+ C_{\rm maj}=\max\{64K^6\max(1,T),G_1\max(1,G_0)\}.
+\]
+\lean{Trees/PaperConstants.lean} proves
+\lean{GevreyBounds.majorantConstant_eq_paper_formula}; in particular,
+$C_{\rm maj}=64K^6\max(1,T)$.
+
+For $2/3<\rho<1/\tau$, $T>0$ and $a,\Theta\ge0$, define the series
+chosen at the end of Appendix C:
+\[
+\begin{split}
+ H_*^{\mathcal E}(a;\Theta)
+   &=\sum_{n\ge0}(aT^{\rho/2}\Theta)^n(n!)^{\tau\rho-1},\\
+ H_*^{\mathcal J}(a;\Theta)
+   &=\sum_{n\ge1}(aC_{\rho,T}\Theta)^n n(n!)^{\tau\rho-1}.
+\end{split}
+\]
+Here $C_{\rho,T}$ is the constant of Lemma 4.4 selected in Appendix C,
+implemented by \lean{detailSummabilityConstant}.
+With $a'=2^{\tau\rho}a$, the paper's constant is
+\[
+\begin{split}
+ C_H(a,\rho,\tau,T;\Theta)
+ ={}&H_*^{\mathcal E}(a;\Theta)
+ +H_*^{\mathcal J}(a';\Theta)H_*^{\mathcal E}(a';\Theta)\\
+ &+T^\rho\bigl(H_*^{\mathcal E}(a;\Theta)-1\bigr).
+\end{split}
+\]
+These are \lean{paperEndpointSeries}, \lean{paperDetailSeries} and
+\lean{paperTimeFactorConstant} in \lean{Regularity/PaperSummability.lean}.
+They converge, are nondecreasing in $a,\Theta$, and $C_H(a,\rho,\tau,T;0)=1$.
+The auxiliary total definitions use $\max(1,C_H)$; the proved equality
+on the displayed parameter range removes this maximum.
+
+For the constant in (4.17) and the end of paper Section 4.3, write
+\[
+\begin{split}
+ H&=C_H(\kappa C_{\rm maj}^{\rho},\rho,\tau,T;
+                              \vartheta^{3\rho/2}),\\
+ C_{\rm sum}(\kappa,\rho;\vartheta)
+   &=H\sum_{k\ge0}(C_{\rm maj}^{\rho}H)^k(k!)^{\tau\rho-1},\\
+ \rho&=\frac{2/3+\min\{p,1/\tau\}}2,\qquad
+ C_{\mathcal D}(\kappa,p;\vartheta)
+   =\left[C_{\rm sum}(\kappa^{\rho/p},\rho;\vartheta)\right]^{p/\rho}.
+\end{split}
+\]
+For $\kappa>0$, $p>2/3$ and $\vartheta\ge0$, the final constant is
+positive and nondecreasing in $\kappa,\vartheta$.
+Its remaining parameters are exactly $\tau,T,B_0,B_1,G_0,G_1$.
+\lean{Sampling/DimensionUniform.lean} identifies this formula through
+\lean{paperDerivativeConstant_eq_paper_formula} and proves
+\lean{paperDerivativeConstant_mono}.
+
+\subsection{Gaussian transfer and sampling constants}
+\label{sec:sampling-constants}
+Equations (5.2) and (D.3) select
+\[
+\begin{split}
+ \alpha_0&=1+\beta_g e^{LT}\sqrt T\,\Theta_1(2+1/\sqrt2),\qquad
+ \lambda_0=2(\alpha_0-1),\\
+ K_{\alpha_0}(\lambda_0)&=\max\{2e^{\lambda_0^2/2},\alpha_0\},\\
+ C_{\rm aux}(x,\Theta_1)
+   &=e^{2\beta_g e^{LT}(x+K_0T)}
+       K_{\alpha_0}(\lambda_0)\,2^{(4+3\sqrt2)/(4+\sqrt2)}.
+\end{split}
+\]
+They are defined in \lean{Sampling/HybridMoment.lean};
+\lean{Sampling/HybridMomentAssembly.lean} proves Lemma 5.1 with this
+constant, including $\Theta_1=0$.
+For $0<\varepsilon<1/2$, equations (2.28) and (5.8)--(5.11) give
+\[
+ \lambda=\frac1{2(1-\varepsilon)},\qquad r_*=1-\frac\varepsilon2,
+ \qquad
+ C_{\alpha,r}=\frac{\sqrt{2\pi}e^{\alpha^2/(1-r)}}{\pi^{2r}r(1-r)},
+\]
+\[
+ \rho_\lambda=2C_{\alpha_0,r_*}^{\lambda}\zeta(2r_*\lambda),
+\]
+\[
+ C_{\rm lat}(x,\Theta_1,\Theta_{2/3})
+ =C_{\rm aux}(x,\Theta_1)^\lambda
+ \left[C_{\mathcal D}\!\left(\rho_\lambda^{1/(1+\lambda)},
+       \frac{2\lambda}{1+\lambda};\Theta_{2/3}\right)\right]^{1+\lambda},
+\]
+\[
+\begin{split}
+ C_\varepsilon&=2^{1-\varepsilon}C_{\rm lat}^{1-\varepsilon},\\
+ C_{\varepsilon,q,R}
+   &=\left(\frac{2\lambda k}{2\lambda k-q}\right)^{1/q}
+       \binom{2k-1}{k}^{1/(2\lambda k)}C_\varepsilon,
+ \qquad R=2k-1.
+\end{split}
+\]
+\lean{Sampling/Rate.lean} fixes the worst-case error parameters;
+\lean{Sampling/PaperConstants.lean} defines the exact $C_{\rm lat}$;
+\lean{Sampling/PaperTheorems.lean} gives the final single and median
+constants. The proved comparison (2.9) lifts the intermediate
+$\Theta_\rho$ estimate to the displayed $C_{\mathcal D}$.
+The actual $\Theta_1$ remains in $\alpha_0$ and $\rho_\lambda$.
+
+With other model parameters fixed, $C_{\rm lat}$ is nondecreasing in
+$x,\Theta_1,\Theta_{2/3}$. Corollary 3.4 evaluates the same constant at
+\[
+ C_{\rm lat}(R_0,M_{2/3}^{3/2},M_{2/3}).
+\]
+This uses the common model constants of Assumption 2.2 and the
+column-sum bound of Assumption 2.3.
+
+\subsection{Euler constants}
+\label{sec:euler-constants}
+The formulas in \lean{Bias/Constants.lean} are precisely those printed
+in Appendix E. Equations (E.2), (E.4), (E.6) and (E.8) give
+\[
+\begin{split}
+ C_X(x,\sigma)&=e^{LT}(x+K_0T+2\sqrt T\,\sigma),\\
+ C_{\exp}(v,\sigma)&=10\exp\!\left(ve^{LT}K_0T
+                               +v^2e^{2LT}T(1+\sigma^2)\right),\\
+ C_{\rm pay}(x,\sigma)&=G_0G_1\sqrt{2C_{\exp}(2\beta_g,\sigma)}
+                                      e^{\beta_g e^{LT}x},\\
+ C_{\rm inc}(x,\sigma)&=\sqrt T[K_0+LC_X(x,\sigma)]+\sigma.
+\end{split}
+\]
+Equation (E.9) selects the half-order constants
+\[
+\begin{split}
+ C_{{\rm str},1/2}(x,\sigma)
+    &=\tfrac23e^{LT}T\sqrt T
+        [LC_{\rm inc}(x,\sigma)+H_t(1+C_X(x,\sigma))],\\
+ C_{{\rm bias},1/2}(x,\sigma)
+    &=C_{\rm pay}(x,\sigma)C_{{\rm str},1/2}(x,\sigma).
+\end{split}
+\]
+Equations (E.13) and (E.16) select
+\[
+\begin{split}
+ C_A(x,\sigma)&=\tfrac12(L_t+LK_0+\tfrac12\mathsf B_2\sigma^2)
+                      +\tfrac12(L_t+L^2)C_X(x,\sigma),\\
+ C_{\rm str}(x,\sigma)&=e^{LT}[TC_A(x,\sigma)+2L\sigma\sqrt{T/3}],\\
+ C_{\rm bias}(x,\sigma)&=TC_{\rm pay}(x,\sigma)C_{\rm str}(x,\sigma).
+\end{split}
+\]
+Their Lean definitions, in the same order, are
+\lean{stateMomentConstant}, \lean{stateExponentialPrefactor},
+\lean{payoffDifferenceConstant}, \lean{incrementConstant},
+\lean{strongHalfConstant}, \lean{biasHalfConstant},
+\lean{driftRemainderConstant}, \lean{strongOneConstant} and
+\lean{biasOneConstant}.
+The strong first-order estimate is $C_{\rm str}h$ as in (E.17);
+writing the bias rate in powers of $m^{-1}$ accounts for the factor
+$T$ in $C_{\rm bias}$.
+
+These constants are nondecreasing in $x,\sigma$. With common model
+constants, a common $H_t$ or $L_t$, $x\le R_0$ and
+$\Theta_{2/3}\le M_{2/3}$, the uniform results evaluate the same formulas
+at $(R_0,M_{2/3}^{3/2})$.
+
+\begingroup
+\small
+\bibliographystyle{alpha}
+\bibliography{references}
+\endgroup
+\end{document}

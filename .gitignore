@@ -1,0 +1,19 @@
+/.lake
+/.agents/skills/lean4/
+/lean4-skills/
+
+# LaTeX build products for the formalization blueprint
+/blueprint/*.aux
+/blueprint/*.bbl
+/blueprint/*.blg
+/blueprint/*.fdb_latexmk
+/blueprint/*.fls
+/blueprint/*.log
+/blueprint/*.out
+/blueprint/*.pdf
+/blueprint/*.synctex.gz
+/blueprint/*.toc
+/blueprint/*.xdv
+
+# Private development notes; historical blueprints are stored outside this repository.
+/blueprint/internal_maintenance.md
